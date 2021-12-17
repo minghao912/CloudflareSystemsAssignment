@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	jwt "github.com/golang-jwt/jwt"
 	godotenv "github.com/joho/godotenv"
@@ -88,7 +90,7 @@ func auth(writer http.ResponseWriter, request *http.Request) {
 	// Create the JWT token
 	// Set claims
 	claims := &jwt.StandardClaims{
-		ExpiresAt: 86400, // 24 hours in seconds
+		ExpiresAt: time.Now().Add(time.Hour * 24).Unix(), // 24 hours in seconds
 		Subject:   username,
 		Issuer:    "me",
 	}
@@ -116,6 +118,95 @@ func auth(writer http.ResponseWriter, request *http.Request) {
 	fmt.Fprintf(writer, string(verifyBytes)+"\n")
 }
 
+// ENDPOINT 2: /verify
+func verify(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("Verifying cookie...")
+
+	// Check for cookie
+	cookie, err := request.Cookie("token")
+	if err == http.ErrNoCookie {
+		writer.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(writer, "Unable to find cookie with token")
+		return
+	} else if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(writer, "Error while parsing cookie")
+		fmt.Println("Cookie parse error: ", err)
+		return
+	}
+
+	fmt.Println("> Cookie found")
+
+	// Validate token
+	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
+		// Use public key to verify
+		return verifyKey, nil
+	})
+
+	fmt.Println("> Token parsed")
+
+	// Process validation errors
+	switch err.(type) {
+	case *jwt.ValidationError: // Something went wrong during validation
+		// Expired token
+		if err.(*jwt.ValidationError).Errors == jwt.ValidationErrorExpired {
+			writer.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(writer, "Expired token")
+			return
+		}
+
+		// Other error
+		writer.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(writer, "Error while parsing token")
+		fmt.Println("Token parse error: ", err)
+		return
+	case nil: // No error
+		// Invalid token
+		if !token.Valid {
+			writer.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(writer, "Invalid token")
+			return
+		}
+
+		// Valid token
+		fmt.Println("> Successfully verified token: ", token)
+		username, err := ExtractTokenData(token)
+		if err != nil {
+			writer.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintln(writer, "Error parsing token: ", err)
+			return
+		}
+
+		// Everything OK, return the username
+		writer.WriteHeader(http.StatusOK)
+		fmt.Fprintln(writer, username)
+
+		break
+	default: // Some other error
+		writer.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(writer, "Error while parsing token")
+		fmt.Println("Token parse error: ", err)
+		return
+	}
+
+	fmt.Println("Cookie verified")
+}
+
+// Extract data from token
+func ExtractTokenData(token *jwt.Token) (string, error) {
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("Error parsing token claims")
+	} else {
+		username, ok := claims["sub"].(string)
+		if !ok {
+			return "", errors.New("Error parsing username")
+		}
+
+		return username, nil
+	}
+}
+
 // Returns a 404 for an invalid URL
 func InvalidURL(writer *http.ResponseWriter) {
 	// Set headers and status code
@@ -138,6 +229,7 @@ func InvalidURL(writer *http.ResponseWriter) {
 func main() {
 	http.HandleFunc("/hello", hello)
 	http.HandleFunc("/auth/", auth)
+	http.HandleFunc("/verify", verify)
 
 	// Host server on port 8090
 	http.ListenAndServe(":8090", nil)
