@@ -58,6 +58,13 @@ func init() {
 	}
 
 	fmt.Println("Successfully read key files")
+
+	// Initialize global vars for stats
+	authTotalNumberOfRuns = 0
+	authCurrentAverage = 0
+	verifyTotalNumberOfRuns = 0
+	verifyCurrentAverage = 0
+	fmt.Println("Initialized stat-tracker")
 }
 
 // Response, simple "hello"
@@ -67,6 +74,9 @@ func hello(writer http.ResponseWriter, request *http.Request) {
 
 // ENDPOINT 1: /auth/<username>
 func auth(writer http.ResponseWriter, request *http.Request) {
+	// Start timer
+	authStartTime := time.Now()
+
 	// GET requests only
 	if request.Method != "GET" {
 		writer.WriteHeader(http.StatusBadRequest)
@@ -116,10 +126,25 @@ func auth(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "text/plain")
 	writer.WriteHeader(http.StatusOK)
 	fmt.Fprintf(writer, string(verifyBytes)+"\n")
+
+	// End timer, update stats
+	authTimeElapsed := time.Now().Sub(authStartTime).Milliseconds()
+	authCurrentAverage = ((authCurrentAverage * authTotalNumberOfRuns) + int(authTimeElapsed)) / (authTotalNumberOfRuns + 1)
+	authTotalNumberOfRuns++
 }
 
 // ENDPOINT 2: /verify
 func verify(writer http.ResponseWriter, request *http.Request) {
+	// Start timer
+	verifyStartTime := time.Now()
+
+	// GET requests only
+	if request.Method != "GET" {
+		writer.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(writer, "GET requests only", request.Method)
+		return
+	}
+
 	fmt.Println("Verifying cookie...")
 
 	// Check for cookie
@@ -190,6 +215,11 @@ func verify(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	fmt.Println("Cookie verified")
+
+	// End timer, update stats
+	verifyTimeElapsed := time.Now().Sub(verifyStartTime).Milliseconds()
+	verifyCurrentAverage = ((verifyCurrentAverage * verifyTotalNumberOfRuns) + int(verifyTimeElapsed)) / (verifyTotalNumberOfRuns + 1)
+	verifyTotalNumberOfRuns++
 }
 
 // Extract data from token
@@ -205,6 +235,31 @@ func ExtractTokenData(token *jwt.Token) (string, error) {
 
 		return username, nil
 	}
+}
+
+// Global variables for stats
+var (
+	authTotalNumberOfRuns   int
+	authCurrentAverage      int
+	verifyTotalNumberOfRuns int
+	verifyCurrentAverage    int
+)
+
+// Endpoint 4: /stats
+func stats(writer http.ResponseWriter, request *http.Request) {
+	// GET requests only
+	if request.Method != "GET" {
+		writer.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(writer, "GET requests only", request.Method)
+		return
+	}
+
+	// Retreive and show info
+	outputString := ""
+	outputString += "-- Stats --\n"
+	outputString += "Endpoint 1: auth\tNumber of Runs: " + fmt.Sprint(authTotalNumberOfRuns) + "\tAverage: " + fmt.Sprint(authCurrentAverage) + "ms\n"
+	outputString += "Endpoint 2: verify\tNumber of Runs: " + fmt.Sprint(verifyTotalNumberOfRuns) + "\tAverage: " + fmt.Sprint(verifyCurrentAverage) + "ms\n"
+	fmt.Fprintln(writer, outputString)
 }
 
 // Returns a 404 for an invalid URL
@@ -227,9 +282,17 @@ func InvalidURL(writer *http.ResponseWriter) {
 
 // Main function, runs automatically
 func main() {
+	// Debug
 	http.HandleFunc("/hello", hello)
+
+	// Endpoint 1
 	http.HandleFunc("/auth/", auth)
+
+	// Endpoint 2
 	http.HandleFunc("/verify", verify)
+
+	// Endpoint 4
+	http.HandleFunc("/stats", stats)
 
 	// Host server on port 8090
 	http.ListenAndServe(":8090", nil)
