@@ -311,6 +311,6 @@ func main() {
 	// Endpoint 4
 	http.HandleFunc("/stats", stats)
 
-	// Host server on port 8090
-	http.ListenAndServe(":8090", nil)
+	// Host server on port 8080
+	http.ListenAndServe(":8080", nil)
 }
