@@ -237,6 +237,20 @@ func ExtractTokenData(token *jwt.Token) (string, error) {
 	}
 }
 
+// Endpoint 3: /README.txt
+func showREADME(writer http.ResponseWriter, request *http.Request) {
+	readme, err := ioutil.ReadFile("README.txt")
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(writer, "Error while loading README")
+		fmt.Errorf("%s", err)
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+	fmt.Fprintln(writer, string(readme))
+}
+
 // Global variables for stats
 var (
 	authTotalNumberOfRuns   int
@@ -290,6 +304,9 @@ func main() {
 
 	// Endpoint 2
 	http.HandleFunc("/verify", verify)
+
+	// Endpoint 3
+	http.HandleFunc("/README.txt", showREADME)
 
 	// Endpoint 4
 	http.HandleFunc("/stats", stats)
