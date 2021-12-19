@@ -206,7 +206,7 @@ func verify(writer http.ResponseWriter, request *http.Request) {
 
 		// Everything OK, return the username
 		writer.WriteHeader(http.StatusOK)
-		fmt.Fprint(writer, username)
+		fmt.Fprintln(writer, username)
 
 		break
 	default: // Some other error
