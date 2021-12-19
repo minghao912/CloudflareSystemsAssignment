@@ -147,28 +147,30 @@ func verify(writer http.ResponseWriter, request *http.Request) {
 
 	fmt.Println("Verifying cookie...")
 
-	// Check for cookie
-	cookie, err := request.Cookie("token")
-	if err == http.ErrNoCookie {
+	// Get cookie from header
+	cookie := request.Header.Get("Set-Cookie")
+	if cookie == "" {
+		writer.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(writer, "Unable to find cookie in header")
+		return
+	}
+
+	// Get the value of the token
+	cookieSplit := strings.Split(cookie, "token=")
+	if len(cookieSplit) < 2 {
 		writer.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(writer, "Unable to find cookie with token")
-		return
-	} else if err != nil {
-		writer.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(writer, "Error while parsing cookie")
-		fmt.Println("Cookie parse error: ", err)
 		return
 	}
 
 	fmt.Println("> Cookie found")
 
 	// Validate token
-	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
+	fmt.Println("> Parsing token...")
+	token, err := jwt.Parse(cookieSplit[1], func(token *jwt.Token) (interface{}, error) {
 		// Use public key to verify
 		return verifyKey, nil
 	})
-
-	fmt.Println("> Token parsed")
 
 	// Process validation errors
 	switch err.(type) {
